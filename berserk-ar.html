@@ -3,161 +3,215 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BERSERK — AR Scanner</title>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <title>BERSERK — AR</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000; font-family: 'Arial Black', sans-serif; overflow: hidden; }
+        body { background: #000; font-family: 'Arial Black', sans-serif; overflow: hidden; color: #fff; }
 
-        #loading {
-            position: fixed; inset: 0; background: #000;
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
-            z-index: 9999; color: #fff;
+        #screen-loading, #screen-instructions, #screen-scanning, #screen-found {
+            position: fixed; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; padding: 32px; text-align: center;
         }
-        #loading h1 { font-size: 28px; letter-spacing: 6px; text-transform: uppercase; margin-bottom: 8px; }
-        #loading p { font-size: 12px; color: #666; letter-spacing: 2px; margin-bottom: 32px; }
+        #screen-loading { background: #000; z-index: 100; }
+        #screen-instructions { background: #000; z-index: 90; display: none; }
+        #screen-scanning { z-index: 10; display: none; }
+        #screen-found { background: rgba(0,0,0,0.75); z-index: 80; display: none; }
+
+        h1 { font-size: 30px; letter-spacing: 8px; margin-bottom: 6px; }
+        .sub { font-size: 11px; color: #555; letter-spacing: 3px; margin-bottom: 36px; }
+
         .loader {
-            width: 48px; height: 48px;
+            width: 44px; height: 44px;
             border: 3px solid #222; border-top-color: #fff;
             border-radius: 50%; animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        #instructions {
-            position: fixed; inset: 0; background: #000;
-            display: none; flex-direction: column;
-            align-items: center; justify-content: center;
-            z-index: 9998; color: #fff; padding: 32px; text-align: center;
-        }
-        #instructions h2 { font-size: 20px; letter-spacing: 5px; margin-bottom: 10px; }
-        #instructions p { font-size: 13px; color: #888; line-height: 1.7; margin-bottom: 32px; max-width: 280px; }
-        #startBtn {
+        .btn {
             background: #fff; color: #000; border: none;
-            padding: 14px 44px; font-size: 13px; font-weight: 900;
+            padding: 15px 48px; font-size: 13px; font-weight: 900;
             letter-spacing: 4px; text-transform: uppercase;
-            cursor: pointer; border-radius: 2px;
+            cursor: pointer; border-radius: 2px; margin-top: 8px;
+        }
+        .btn-outline {
+            background: transparent; color: #fff;
+            border: 1px solid rgba(255,255,255,0.3);
+            padding: 12px 32px; font-size: 12px; font-weight: 700;
+            letter-spacing: 3px; text-transform: uppercase;
+            cursor: pointer; border-radius: 2px; margin-top: 12px;
         }
 
-        #hint {
-            position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.75); color: #fff;
-            padding: 10px 22px; border-radius: 2px;
-            font-size: 11px; letter-spacing: 3px;
-            text-transform: uppercase; z-index: 9997;
-            border: 1px solid rgba(255,255,255,0.15);
-            display: none;
+        #video {
+            position: fixed; inset: 0; width: 100%; height: 100%;
+            object-fit: cover; z-index: 1;
+        }
+        #canvas { display: none; }
+
+        .hint {
+            position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.7); color: #fff;
+            padding: 10px 20px; border-radius: 2px;
+            font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
+            border: 1px solid rgba(255,255,255,0.15); z-index: 20;
+            white-space: nowrap;
         }
 
-        #found-overlay {
-            position: fixed; inset: 0; z-index: 9999;
-            display: none; flex-direction: column;
-            align-items: center; justify-content: center;
-            background: rgba(0,0,0,0.7);
+        .scan-frame {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -60%);
+            width: 220px; height: 220px; z-index: 20;
         }
-        #found-overlay .ring {
-            width: 130px; height: 130px; border-radius: 50%;
+        .scan-frame::before, .scan-frame::after,
+        .scan-frame span::before, .scan-frame span::after {
+            content: ""; position: absolute; width: 28px; height: 28px;
+            border-color: #fff; border-style: solid;
+        }
+        .scan-frame::before { top: 0; left: 0; border-width: 2px 0 0 2px; }
+        .scan-frame::after { top: 0; right: 0; border-width: 2px 2px 0 0; }
+        .scan-frame span::before { bottom: 0; left: 0; border-width: 0 0 2px 2px; }
+        .scan-frame span::after { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+        .scan-line {
+            position: absolute; left: 4px; right: 4px; height: 1px;
+            background: rgba(255,255,255,0.6);
+            animation: scanMove 2s ease-in-out infinite;
+            top: 0;
+        }
+        @keyframes scanMove {
+            0%, 100% { top: 4px; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            50% { top: calc(100% - 4px); }
+        }
+
+        /* Found screen */
+        .ring {
+            width: 120px; height: 120px; border-radius: 50%;
             border: 2px solid #fff; margin-bottom: 24px;
-            animation: ringPulse 1.2s ease-out infinite;
+            animation: pulse 1.2s ease-out infinite;
         }
-        @keyframes ringPulse {
-            0% { opacity: 1; transform: scale(0.95); }
-            100% { opacity: 0; transform: scale(1.25); }
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 1; }
+            100% { transform: scale(1.3); opacity: 0; }
         }
-        #found-overlay p {
-            color: #fff; font-size: 11px; letter-spacing: 4px;
-            text-transform: uppercase; margin-bottom: 24px; opacity: 0.8;
-        }
-        #found-overlay a {
-            background: #fff; color: #000;
-            padding: 14px 40px; font-weight: 900;
-            font-size: 13px; letter-spacing: 4px;
-            text-transform: uppercase; text-decoration: none;
-            border-radius: 2px;
+        .found-title { font-size: 12px; letter-spacing: 5px; margin-bottom: 24px; opacity: 0.7; }
+        .go-link {
+            display: inline-block; background: #fff; color: #000;
+            padding: 14px 40px; font-weight: 900; font-size: 13px;
+            letter-spacing: 4px; text-transform: uppercase;
+            text-decoration: none; border-radius: 2px;
         }
 
-        a-scene { position: fixed; inset: 0; z-index: 1; }
+        #instructions-desc { font-size: 14px; color: #888; line-height: 1.7; margin-bottom: 32px; max-width: 260px; }
     </style>
 </head>
 <body>
 
-<div id="loading">
+<!-- Загрузка -->
+<div id="screen-loading">
     <h1>BERSERK</h1>
-    <p>FIGHT CLUB · AR</p>
+    <div class="sub">FIGHT CLUB · AR</div>
     <div class="loader"></div>
 </div>
 
-<div id="instructions">
-    <h2>AR SCANNER</h2>
-    <p>Наведи камеру на логотип BERSERK — и попадёшь прямо на сайт клуба</p>
-    <button id="startBtn" onclick="startAR()">ЗАПУСТИТЬ СКАНЕР</button>
+<!-- Инструкция -->
+<div id="screen-instructions">
+    <h1>BERSERK</h1>
+    <div class="sub">AR SCANNER</div>
+    <p id="instructions-desc">Наведи камеру на логотип BERSERK — и попадёшь прямо на сайт клуба</p>
+    <button class="btn" onclick="requestCamera()">ЗАПУСТИТЬ СКАНЕР</button>
 </div>
 
-<div id="hint">НАВЕДИ НА ЛОГОТИП</div>
+<!-- Сканирование -->
+<div id="screen-scanning">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="scan-frame"><span></span><div class="scan-line"></div></div>
+    <div class="hint" id="hint">НАВЕДИ НА ЛОГОТИП</div>
+</div>
 
-<div id="found-overlay">
+<!-- Найдено -->
+<div id="screen-found">
     <div class="ring"></div>
-    <p>ЛОГОТИП РАСПОЗНАН</p>
-    <a href="https://berserk-fight-club.ru/">ПЕРЕЙТИ НА САЙТ</a>
+    <div class="found-title">ЛОГОТИП РАСПОЗНАН</div>
+    <a class="go-link" href="https://berserk-fight-club.ru/">ПЕРЕЙТИ НА САЙТ</a>
 </div>
 
-<a-scene
-    id="arScene"
-    style="display:none;"
-    mindar-image="imageTargetSrc: https://n1kiji.github.io/berserk-ar/targets.mind; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
-    color-space="sRGB"
-    renderer="colorManagement: true, physicallyCorrectLights"
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false">
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-    <a-entity mindar-image-target="targetIndex: 0" id="target0">
-        <a-plane width="1" height="1" opacity="0" id="triggerPlane"></a-plane>
-    </a-entity>
-</a-scene>
-
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
 <script>
-    window.addEventListener('load', function() {
-        setTimeout(function() {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('instructions').style.display = 'flex';
-        }, 1500);
-    });
+(function() {
+    // Показываем экран инструкции
+    setTimeout(function() {
+        show('screen-instructions');
+        hide('screen-loading');
+    }, 1200);
 
-    function startAR() {
-        document.getElementById('instructions').style.display = 'none';
-        document.getElementById('hint').style.display = 'block';
+    function show(id) { document.getElementById(id).style.display = 'flex'; }
+    function hide(id) { document.getElementById(id).style.display = 'none'; }
 
-        const scene = document.getElementById('arScene');
-        scene.style.display = 'block';
+    window.requestCamera = async function() {
+        hide('screen-instructions');
+        show('screen-scanning');
 
-        const target = document.getElementById('target0');
-
-        target.addEventListener('targetFound', function() {
-            document.getElementById('hint').style.display = 'none';
-            const overlay = document.getElementById('found-overlay');
-            overlay.style.display = 'flex';
-            setTimeout(function() {
-                window.location.href = 'https://berserk-fight-club.ru/';
-            }, 2500);
-        });
-
-        target.addEventListener('targetLost', function() {
-            document.getElementById('found-overlay').style.display = 'none';
-            document.getElementById('hint').style.display = 'block';
-        });
-
-        // Ждём загрузки сцены и стартуем
-        if (scene.hasLoaded) {
-            const sys = scene.systems['mindar-image-system'];
-            if (sys) sys.start();
-        } else {
-            scene.addEventListener('loaded', function() {
-                const sys = scene.systems['mindar-image-system'];
-                if (sys) sys.start();
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
             });
+
+            const video = document.getElementById('video');
+            video.srcObject = stream;
+            await video.play();
+
+            // Ждём загрузки MindAR
+            waitForMindAR(video);
+
+        } catch(err) {
+            document.getElementById('hint').textContent = 'НЕТ ДОСТУПА К КАМЕРЕ';
+            console.error(err);
+        }
+    };
+
+    function waitForMindAR(video) {
+        if (typeof window.MINDAR === 'undefined' || typeof window.MINDAR.IMAGE === 'undefined') {
+            setTimeout(function() { waitForMindAR(video); }, 200);
+            return;
+        }
+        startMindAR(video);
+    }
+
+    async function startMindAR(video) {
+        try {
+            const mindar = new window.MINDAR.IMAGE.MindARThree({
+                container: document.getElementById('screen-scanning'),
+                imageTargetSrc: 'https://n1kiji.github.io/berserk-ar/targets.mind',
+                maxTrack: 1,
+                uiLoading: 'no',
+                uiScanning: 'no',
+                uiError: 'no'
+            });
+
+            const anchor = mindar.addAnchor(0);
+
+            anchor.onTargetFound = function() {
+                hide('screen-scanning');
+                show('screen-found');
+                setTimeout(function() {
+                    window.location.href = 'https://berserk-fight-club.ru/';
+                }, 2500);
+            };
+
+            anchor.onTargetLost = function() {
+                hide('screen-found');
+                show('screen-scanning');
+            };
+
+            await mindar.start();
+
+        } catch(err) {
+            document.getElementById('hint').textContent = 'ОШИБКА: ' + err.message;
+            console.error(err);
         }
     }
+})();
 </script>
 </body>
 </html>
