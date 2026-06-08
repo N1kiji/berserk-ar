@@ -77,7 +77,7 @@
             border-radius: 2px;
         }
 
-        a-scene { display: none; }
+        a-scene { position: fixed; inset: 0; z-index: 1; }
     </style>
 </head>
 <body>
@@ -104,6 +104,7 @@
 
 <a-scene
     id="arScene"
+    style="display:none;"
     mindar-image="imageTargetSrc: https://n1kiji.github.io/berserk-ar/targets.mind; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
     color-space="sRGB"
     renderer="colorManagement: true, physicallyCorrectLights"
@@ -130,13 +131,6 @@
         const scene = document.getElementById('arScene');
         scene.style.display = 'block';
 
-        scene.addEventListener('loaded', function() {
-            const mindarSystem = scene.systems['mindar-image-system'];
-            if (mindarSystem) {
-                mindarSystem.start();
-            }
-        });
-
         const target = document.getElementById('target0');
 
         target.addEventListener('targetFound', function() {
@@ -152,6 +146,17 @@
             document.getElementById('found-overlay').style.display = 'none';
             document.getElementById('hint').style.display = 'block';
         });
+
+        // Ждём загрузки сцены и стартуем
+        if (scene.hasLoaded) {
+            const sys = scene.systems['mindar-image-system'];
+            if (sys) sys.start();
+        } else {
+            scene.addEventListener('loaded', function() {
+                const sys = scene.systems['mindar-image-system'];
+                if (sys) sys.start();
+            });
+        }
     }
 </script>
 </body>
