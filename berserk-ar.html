@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BERSERK — AR Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image.prod.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; font-family: 'Arial Black', sans-serif; overflow: hidden; }
+
+        #loading {
+            position: fixed; inset: 0; background: #000;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 100; color: #fff;
+        }
+        #loading h1 { font-size: 28px; letter-spacing: 6px; text-transform: uppercase; margin-bottom: 8px; }
+        #loading p { font-size: 12px; color: #666; letter-spacing: 2px; margin-bottom: 32px; }
+        .loader {
+            width: 48px; height: 48px;
+            border: 3px solid #222; border-top-color: #fff;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #instructions {
+            position: fixed; inset: 0; background: #000;
+            display: none; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 99; color: #fff; padding: 32px; text-align: center;
+        }
+        #instructions img {
+            width: 110px; height: 110px; border-radius: 50%;
+            border: 2px solid #333; margin-bottom: 24px; object-fit: cover;
+        }
+        #instructions h2 { font-size: 20px; letter-spacing: 5px; margin-bottom: 10px; }
+        #instructions p { font-size: 13px; color: #888; line-height: 1.7; margin-bottom: 32px; max-width: 280px; }
+        #startBtn {
+            background: #fff; color: #000; border: none;
+            padding: 14px 44px; font-size: 13px; font-weight: 900;
+            letter-spacing: 4px; text-transform: uppercase;
+            cursor: pointer; border-radius: 2px;
+            transition: opacity 0.2s;
+        }
+        #startBtn:active { opacity: 0.7; }
+
+        #ar-container {
+            position: fixed; inset: 0; display: none; z-index: 10;
+        }
+
+        #hint {
+            position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.75); color: #fff;
+            padding: 10px 22px; border-radius: 2px;
+            font-size: 11px; letter-spacing: 3px;
+            text-transform: uppercase; z-index: 50;
+            border: 1px solid rgba(255,255,255,0.15);
+            pointer-events: none;
+        }
+
+        /* Оверлей при обнаружении логотипа */
+        #found-overlay {
+            position: fixed; inset: 0; z-index: 60;
+            display: none; flex-direction: column;
+            align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.5);
+        }
+        #found-overlay .ring {
+            width: 140px; height: 140px; border-radius: 50%;
+            border: 2px solid #fff; margin-bottom: 28px;
+            position: relative; animation: ringPulse 1.2s ease-out infinite;
+        }
+        #found-overlay .ring::after {
+            content: ""; position: absolute; inset: -12px;
+            border-radius: 50%; border: 1px solid rgba(255,255,255,0.3);
+            animation: ringPulse 1.2s ease-out 0.3s infinite;
+        }
+        @keyframes ringPulse {
+            0% { opacity: 1; transform: scale(0.95); }
+            100% { opacity: 0; transform: scale(1.2); }
+        }
+        #found-overlay p {
+            color: #fff; font-size: 11px; letter-spacing: 4px;
+            text-transform: uppercase; margin-bottom: 24px; opacity: 0.8;
+        }
+        #found-overlay a {
+            background: #fff; color: #000;
+            padding: 14px 40px; font-weight: 900;
+            font-size: 13px; letter-spacing: 4px;
+            text-transform: uppercase; text-decoration: none;
+            border-radius: 2px; display: inline-block;
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading">
+    <h1>BERSERK</h1>
+    <p>FIGHT CLUB · AR</p>
+    <div class="loader"></div>
+</div>
+
+<div id="instructions">
+    <img src="https://sun9-4.userapi.com/impg/berserk_logo" 
+         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2248%22 fill=%22%23111%22 stroke=%22%23444%22 stroke-width=%222%22/%3E%3Ctext x=%2250%22 y=%2255%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-size=%2216%22 font-weight=%22bold%22 font-family=%22Arial%22%3EBERSERK%3C/text%3E%3C/svg%3E'">
+    <h2>AR SCANNER</h2>
+    <p>Наведи камеру на логотип BERSERK — и попадёшь прямо на сайт клуба</p>
+    <button id="startBtn" onclick="startAR()">ЗАПУСТИТЬ СКАНЕР</button>
+</div>
+
+<div id="ar-container"></div>
+<div id="hint">НАВЕДИ НА ЛОГОТИП</div>
+
+<div id="found-overlay">
+    <div class="ring"></div>
+    <p>ЛОГОТИП РАСПОЗНАН</p>
+    <a href="https://berserk-fight-club.ru/" id="siteLink">ПЕРЕЙТИ НА САЙТ</a>
+</div>
+
+<script>
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('instructions').style.display = 'flex';
+        }, 1200);
+    });
+
+    let mindarInstance = null;
+
+    async function startAR() {
+        document.getElementById('instructions').style.display = 'none';
+        document.getElementById('ar-container').style.display = 'block';
+        document.getElementById('hint').style.display = 'block';
+
+        try {
+            const mindar = new window.MINDAR.IMAGE.MindARThree({
+                container: document.getElementById('ar-container'),
+                imageTargetSrc: 'targets.mind',
+                maxTrack: 1,
+                uiLoading: 'yes',
+                uiScanning: 'yes',
+                uiError: 'yes'
+            });
+
+            mindarInstance = mindar;
+
+            const { renderer, scene, camera } = mindar;
+
+            const anchor = mindar.addAnchor(0);
+
+            // Когда логотип найден
+            anchor.onTargetFound = function() {
+                document.getElementById('hint').style.display = 'none';
+                const overlay = document.getElementById('found-overlay');
+                overlay.style.display = 'flex';
+
+                // Авто-переход через 2.5 секунды
+                setTimeout(function() {
+                    window.location.href = 'https://berserk-fight-club.ru/';
+                }, 2500);
+            };
+
+            // Когда логотип потерян
+            anchor.onTargetLost = function() {
+                document.getElementById('found-overlay').style.display = 'none';
+                document.getElementById('hint').style.display = 'block';
+            };
+
+            await mindar.start();
+
+            renderer.setAnimationLoop(function() {
+                renderer.render(scene, camera);
+            });
+
+        } catch(e) {
+            console.error(e);
+            // Если что-то пошло не так — показываем кнопку вручную
+            document.getElementById('hint').textContent = 'ОШИБКА КАМЕРЫ';
+        }
+    }
+</script>
+</body>
+</html>
